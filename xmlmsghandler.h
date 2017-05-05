@@ -10,7 +10,7 @@
 
 #include "WinSock2.h"
 #include "Windows.h"
-#include "mongo/client/dbclient.h"
+//#include "mongo/client/dbclient.h"
 
 #include "MQTopicInterface.h"
 

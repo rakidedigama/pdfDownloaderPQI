@@ -8,9 +8,11 @@
 #include <QMap>
 #include <QDateTime>
 #include <QDir>
+#include "QDebug"
 
-#include "json/json.h"
+#include "json.h"
 #include "IniFile.h"
+
 
 
 
@@ -34,16 +36,20 @@ void XMLMsgHandler::handleFile(QString file)
     if (!open)
     {
        cout << "Couldn't open : " << file.toStdString() << endl;
+       qDebug()<<"Couldnt open XML";
        return;
     }
+    else
+        qDebug()<<"XML opened";
 
 
-
+/*
     IniFile ini(m_qsIni.toStdString().c_str());
     QString qsXSDPath = QString::fromStdString(ini.GetSetValue("Validation", "IncomingXSDSchema", "C:/Users/lvt/Documents/SE_XML/SE_incoming_Schema_20161125.xsd"));
-    string sMongoIP = ini.GetSetValue("Mongo","IP","127.0.0.1");
-    string sMongoCollection = ini.GetSetValue("Mongo","ReelDataCollection","SE.Reeldata");
+   // string sMongoIP = ini.GetSetValue("Mongo","IP","127.0.0.1");
+    //string sMongoCollection = ini.GetSetValue("Mongo","ReelDataCollection","SE.Reeldata");
     if (ini.IsDirty())
+        qDebug()<<"ini is dirty";
         ini.Save();
 
 
@@ -52,6 +58,7 @@ void XMLMsgHandler::handleFile(QString file)
     if (!open)
     {
        cout << "Couldn't open xsd file: " << qsXSDPath.toStdString() << endl;
+       qDebug() << "Couldn't open xsd file: " << endl;
        return;
     }
 
@@ -78,35 +85,83 @@ void XMLMsgHandler::handleFile(QString file)
         cout << "Validation failed " << endl;
         return;
     }
+*/
 
 
+   // if (fileXML.atEnd())
+     //   fileXML.seek(0);
 
-    if (fileXML.atEnd())
-        fileXML.seek(0);
     QXmlStreamReader xml(&fileXML);
+    bool endDoc = false;
+    int count = 0;
 
 
 
-    QMap<QString,QString> values;
-    if (xml.readNextStartElement())
+    xml.readNext();
+    //while (!xml.isEndDocument())
+    while(!endDoc)
     {
-            if (xml.name() == "root")
-            {
-                while(xml.readNextStartElement())
+         if(count>=20)
+             endDoc = true;
+
+         else if(xml.isStartElement()){
+             QString ele = xml.name().toString();
+             QString jobid = "";
+             if (ele.contains("JobPhase")){
+                qDebug()<< "Start element JobPhase found: "<< xml.name().toString();
+                while(!xml.isEndElement() & endDoc == false){
+                    foreach(const QXmlStreamAttribute &attr, xml.attributes()){
+                       //qDebug()<< attr.name().toString() ;
+                      // qDebug()<< attr.value().toString();
+                       if(attr.name().contains("JobId")){
+                           jobid = attr.value().toString();
+                           qDebug()<< attr.name() <<": " << jobid<<endl;
+                           endDoc = true;
+                           break;
+                       }
+                    }
+                    xml.readNext();
+                }
+                qDebug()<<"Exiting element, stopping"<<endl;
+                endDoc = true;
+             }
+             xml.readNext();
+         }
+         else{
+             //qDebug()<<"Token type: " << xml.tokenString();
+              xml.readNext();}
+         count++;
+         //msleep(500);
+     }
+     if (xml.hasError())
+     {
+         std::cout << "XML error: " << xml.errorString().data() << std::endl;
+     }
+
+
+
+   // QMap<QString,QString> values;
+//    if (xml.readNextStartElement())
+//    {
+//        qDebug()<< "Xml name: " << xml.name();
+           // if (xml.name() == "root")
+            //{
+                /*while(xml.readNextStartElement())
                 {
                     cout << "Element: " << xml.name().toString().toStdString() << endl;
 
                     while(xml.readNextStartElement())
                     {
+                        qDebug()<< xml.name().toString() << " : " << xml.readElementText() <<endl;
                         //cout << xml.name().toString().toStdString() << " : " << xml.readElementText().toStdString() <<endl;
                         //if(xml.name() == "REELNO")
                         values[xml.name().toString()] = xml.readElementText();
                     }
-                }
-            }
-    }
+                //}
+            //}
+    //}
 
-    cout << values.size() << endl;
+   /* cout << values.size() << endl;
     cout << "Reel #: " << values["REELNO"].toStdString() << endl;
     cout << "Grade #: " << values["GRADEID"].toStdString() << endl;
     cout << "PM #: " << values["PMNO"].toStdString() << endl;
@@ -114,7 +169,9 @@ void XMLMsgHandler::handleFile(QString file)
     cout << "Date #: " << values["SDATETIME"].toStdString() << endl;
     cout << "OPTIONS2 #: " << values["OPTIONS2"].toStdString() << endl;
     cout << "OPTIONS3 #: " << values["OPTIONS3"].toStdString() << endl;
-    cout << "OPTIONS4 #: " << values["OPTIONS4"].toStdString() << endl;
+    cout << "OPTIONS4 #: " << values["OPTIONS4"].toStdString() << endl;*/
+
+    /*
     QString dateStr = values["SDATETIME"];
     QDateTime t;
     t.setDate(QDate(
@@ -144,7 +201,7 @@ void XMLMsgHandler::handleFile(QString file)
 
     m_mq.writeMessage("REELDATA","",false,"JSON",msg.toStyledString().c_str(),msg.toStyledString().length(),100);
 
-    mongo::DBClientConnection c;
+    /*mongo::DBClientConnection c;
     try
     {
         c.connect(sMongoIP);
@@ -162,10 +219,11 @@ void XMLMsgHandler::handleFile(QString file)
         c.insert(sMongoCollection,b.obj());
         c.ensureIndex(sMongoCollection, mongo::fromjson("{_id:1}"));
     }
-    catch( const mongo::DBException &e )
-    {
-        cout << "Could not connect to MongoDB: " << e.what() << endl;
-    }
+
+//  catch( const mongo::DBException &e )
+//    {
+//        cout << "Could not connect to MongoDB: " << e.what() << endl;
+//    }
 
     fileXML.close();
     if(!QDir("Done").exists())
@@ -173,6 +231,8 @@ void XMLMsgHandler::handleFile(QString file)
     QString newName = "Done/" + file;
     QDir().rename(file,newName);
     QDir().remove(file);
+
+*/
 }
 
 
