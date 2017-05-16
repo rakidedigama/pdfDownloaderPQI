@@ -16,6 +16,8 @@ FTPPusher::FTPPusher(QObject *parent) :
     m_iConnectionState = QFtp::Unconnected;
     m_bStopRequested = false;
     is_transferred = false;
+    pdflistupdated = false;
+    is_pdf_transferred = true; //initialize
 
     //fileMutex = new QMutex();
 
@@ -27,6 +29,7 @@ FTPPusher::FTPPusher(QObject *parent) :
     sUser = QString::fromStdString(ini.GetSetValue("FTP", "User","procemex", "FTP username"));
     sPassWord = QString::fromStdString(ini.GetSetValue("FTP", "Password","je0393", "FTP password"));
     sFolder = QString::fromStdString(ini.GetSetValue("FTP", "Folder","pdf", "FTP folder"));
+    pdfFolder = QString("PDF");
     uTimeout = ini.GetSetValue("FTP", "ConnectionTimeout",5000, "Connection timeout");
 
     ftp = 0;
@@ -52,13 +55,14 @@ FTPPusher::FTPPusher(QObject *parent) :
 
 
     QObject::connect(this,SIGNAL(reconnect()),SLOT(connect()));
-    QObject::connect(this,SIGNAL(cd()),SLOT(cdToFolder()));
+    QObject::connect(this,SIGNAL(cd(QString)),SLOT(cdToFolder(QString)));
    // QObject::connect(this,SIGNAL(pushPrintJob(QString)),this,SLOT(pushPJ(QString)));
 
     QObject::connect(this, SIGNAL(requestFileList()),this,SLOT(checkRemoteListing()));
 
     QObject::connect(this,SIGNAL(requestFileDownload(QString)),this,SLOT(getRemoteFile(QString)));
 
+    //QObject::connect(this,SIGNAL(requestPDFDownload(QString)),SLOT(downloadPDFs(QString)));
 
 
 /*
@@ -91,8 +95,8 @@ void FTPPusher::run()
 
         }
 
-        qDebug()<<"Connection okay. Look for downloads";
-        qDebug()<<"size of pending Downloads: "<<pendingDownloads.size();
+        qDebug()<<"Connection okay. Look for new XMLs";
+        qDebug()<<"size of pending xml Downloads: "<<pendingDownloads.size();
         if (pendingDownloads.size()> 0)
         {
             qDebug()<<"pendingDownloads size greater than 0";
@@ -110,30 +114,32 @@ void FTPPusher::run()
                 //if (fileMutex->tryLock(1000) && QFtp::Get != ftp->currentCommand())
                 if ( QFtp::Get != ftp->currentCommand())
                 {
-                   // qDebug()<<"New QFile";
+
                     //Path for subdirectory
                     temp_path += "/";
-                    temp_path += pendingDownloads.at(0);
-                    temp_path.remove(QChar('.'), Qt::CaseInsensitive);
-                    temp_path.remove(QChar('x'), Qt::CaseInsensitive);
-                    temp_path.remove(QChar('m'), Qt::CaseInsensitive);
-                    temp_path.remove(QChar('l'), Qt::CaseInsensitive);
+                    temp_path += jobID;
+//                    temp_path += pendingDownloads.at(0);
+//                    temp_path.remove(QChar('.'), Qt::CaseInsensitive);
+//                    temp_path.remove(QChar('x'), Qt::CaseInsensitive);
+//                    temp_path.remove(QChar('m'), Qt::CaseInsensitive);
+//                    temp_path.remove(QChar('l'), Qt::CaseInsensitive);
                     download_path = cPath;
                     download_path += temp_path;
 
                     if (oDirectory.exists(download_path) )
                      {
-                        qDebug()<< "Directory already exists " << download_path << endl;
-                        msleep(1000);
-                        //Loop between files.
-                        pendingDownloads.removeAll(pendingDownloads.at(0));
+                        qDebug()<< "Directory exists " << download_path << endl;
+//                        msleep(1000);
+//                        pendingDownloads.removeAll(pendingDownloads.at(0));
 
 
                      }
                     else{// If directory/file does not exist, create sub directory. Open file & write to it.
                         oDirectory.mkdir(download_path);
                         qDebug()<< "subdirectory created: " << download_path;
+                    }
                         download_path +="/";
+
                         //file = new QFile(pendingDownloads.at(0));
                         //file = new QFile(QString("/path/to/download/%1").arg(fileName));
                         QString fname = download_path;
@@ -145,44 +151,56 @@ void FTPPusher::run()
                         if(file->open(QIODevice::WriteOnly))
                         {
                             qDebug()<<"Download directory is "<< download_path;
+                            is_transferred = false;
 
-                            //oDirectory.setCurrent(download_path);
-                           // ftp->cd(download_path);
-                            m_iLastGet = ftp->get(pendingDownloads.at(0),file);// signals to transfer file
+                            ftp->get(pendingDownloads.at(0),file);// signals to transfer file
                             cout << "Getting " << pendingDownloads.at(0).toStdString() << "("<< m_iLastGet << ")" << endl;
                             qDebug()<<"Transfering file:"<<pendingDownloads.at(0);
                             while(!is_transferred){
                                //qDebug()<<".";// wait for transfer to be finished
-                             }
-                        is_transferred = false;
-                        //oDirectory.setCurrent(cPath);
+                            }
+                            temp_path.clear();
+                            download_path.clear();
+                            if(pendingDownloads.size()==0){// change directory back to work
 
-                        // This is open for you ...
+                                    qDebug()<<"Emit cd back to work";
+                                    QString tPath = "..";
+                                    tPath.append(sFolder);
+                                    emit cd(tPath);
+
+                            }
+
                         }
                     }
-                    temp_path.clear();
-                    download_path.clear();
+
                     msleep(2000);
                 }             
             }
-        }
+
+
         else
         {
-            qDebug()<<"Pending downloads empty";
-            msleep(3*1000);
-            if (QFtp::LoggedIn == m_iConnectionState)
-                qDebug()<<"emit requestFileList";
-                emit requestFileList();  // Goes to checkRemoteListing > File Entry
+
+                qDebug()<<"Pending downloads empty";
+                msleep(3*1000);
+
+                    qDebug()<<"emit requestFileList";
+                    emit requestFileList();  // Goes to checkRemoteListing > File Entry
+
         }
     }
 
-    cout << "thread out" << endl;
-}
+
+
+
+        temp_path.clear();
+        download_path.clear();
+ }
+
 
 
 void FTPPusher::stateChanged(int iState)
 {
-
     using namespace std;
     this->m_iConnectionState = iState;
     qDebug()<<"stateChanged() "<<m_iConnectionState;
@@ -191,13 +209,11 @@ void FTPPusher::stateChanged(int iState)
         case 3: cout << "FTP Connection state changed to connectED" << endl; break;
         case 1: cout << "FTP Connection state changed to host lookup" << endl; break;
         case 2: cout << "FTP Connection state changed to connectING" << endl; break;
-        case 4: cout << "FTP Connection state changed to logged in" << endl; emit cd();break;
+        case 4: cout << "FTP Connection state changed to logged in" << endl; emit cd(sFolder);break;
         case 5: cout << "FTP Connection state changed to closing" << endl; break;
         case 0: cout << "FTP Connection state changed to unconnected" << endl; break;
         default: cout << "unknown state " << iState << endl; break;
     }
-
-
 }
 
 void FTPPusher::connect()
@@ -217,32 +233,39 @@ void FTPPusher::connect()
 
 }
 
-void FTPPusher::cdToFolder()
+void FTPPusher::cdToFolder(QString folder)
 {
     using namespace std;
     if (QFtp::LoggedIn == m_iConnectionState)// && !bCeedeed)
     {
        // << sFolder.toStdString()<<endl;
-        cout << "cd " << sFolder.toStdString() << endl;
-        ftp->cd(sFolder);
+        //cout << "cd " << sFolder.toStdString() << endl;
+        cout << "cd " << folder.toStdString() << endl;
+        ftp->cd(folder);
     }
     else{
         cout<< "Not logged in"<<endl;
         qDebug()<<"Not logged in"<<endl;
     }
-     qDebug()<<"changed folder to: " << sFolder<<endl;
+    ftpCD = folder;
+    qDebug()<<"changed folder to: " << folder<<endl;
 }
+
 
 
 void FTPPusher::transfer(qint64 done, qint64 total)
 {
+
     using namespace std;
-    qDebug()<<"Transfer"<< done <<"/"<<total;
-    cout << "Transfer " << done << "/" << total <<endl;
-    if (done/total == 1)
-    {
-       // ei saa olla if (fileMutex->tryLock())
+
+    //cout << "Transfer " << done << "/" << total <<endl;
+
+    if(file->exists()){
+         qDebug()<<"Transfer pdf"<< done <<"/"<<total;
+        if (done/total == 1)
         {
+       // ei saa olla if (fileMutex->tryLock())
+
             QFileInfo fileInfo(file->fileName());
             QString name(fileInfo.fileName());//file name without path
             QString fullname = file->fileName();//with path
@@ -252,40 +275,49 @@ void FTPPusher::transfer(qint64 done, qint64 total)
             file->close();
             delete file;
             lastOkDownload = name;
-
-            //fileMutex->unlock();
             pendingDownloads.removeAll(name);//Removing file from list
+            pdffilesList.removeAll(name);
+            ftp->remove(name);
 
-            //ftp->remove(name);
+           // filesOnRemote.removeAll(name);
 
-            filesOnRemote.removeAll(name);
+//           qDebug()<<"emit HandleXML";
+//            emit handleIncomingXML(fullname);
             is_transferred = true;
-            qDebug()<<"emit HandleXML";
-            emit handleIncomingXML(fullname);
+
+
         }
-        /*if (pendingDownloads.size() > 1)
-        {
-            emit requestFileDownload(pendingDownloads.at(0));
-        }*/
     }
 
 }
 
 void FTPPusher::checkRemoteListing()
 {
+    // Lits XMLs
     using namespace std;
 
+
     //if (fileMutex->tryLock())
-    if (pendingDownloads.length() == 0)
-    {
+//    if (pendingDownloads.length() == 0)
+//    {
         qDebug()<<"check remote listing";
         cout << QDateTime::currentDateTime().toString("hh:mm:ss").toStdString() << ": " << "list files" << endl;
         //ftp->clearPendingCommands();
         qDebug()<<"listing files..."<<endl;
-       ftp->list(sFolder); // Goes to fileEntry()
-        // ftp->list(sFolder);
-      //  fileMutex->unlock();
-    }
+//        if(!ftpCD.contains("work")){
+//            qDebug()<<"Emit cd back to work";
+//            QString tPath = "..";
+//            tPath.append(sFolder);
+//            emit cd(tPath);
+
+//        }
+        if(ftpCD.contains("work")){
+            ftp->list(sFolder);
+        }
+        else
+            qDebug()<<"Downloading PDFs. Cannot list Xml files";// Goes to fileEntry()
+
+//    }
 
 }
 
@@ -353,50 +385,85 @@ void FTPPusher::readyRead(int i, bool b)
 
 void FTPPusher::fileEntry(QUrlInfo info)
 {
-    qDebug()<<"FileEntry(): "<<info.name()<<"Last modified:" << info.lastModified().toString();
-    using namespace  std;
+   using namespace  std;
+    if(info.name().endsWith(".xml",Qt::CaseInsensitive)){ // xml folder
+       // qDebug()<<("Listing XML files in work folder");
+        //qDebug()<<"XML FileEntry(): "<<info.name()<<"Last modified:" << info.lastModified().toString();
 
-    temp_path += "/";
-    temp_path += info.name();
-    temp_path.remove(QChar('.'), Qt::CaseInsensitive);
-    temp_path.remove(QChar('x'), Qt::CaseInsensitive);
-    temp_path.remove(QChar('m'), Qt::CaseInsensitive);
-    temp_path.remove(QChar('l'), Qt::CaseInsensitive);
-    download_path += cPath;
-    download_path += temp_path;
-    qDebug()<<"current path is : " << cPath;
-    if(oDirectory.exists(download_path)){
-        qDebug()<<"Directory" << download_path<< "already exists!!!!";
-    }
-    else{
-        if (info.isFile())
-        {
-            if (info.name().endsWith(".xml",Qt::CaseInsensitive))
+        temp_path += "/";
+        temp_path += info.name();
+        temp_path.remove(QChar('.'), Qt::CaseInsensitive);
+        temp_path.remove(QChar('x'), Qt::CaseInsensitive);
+        temp_path.remove(QChar('m'), Qt::CaseInsensitive);
+        temp_path.remove(QChar('l'), Qt::CaseInsensitive);
+        download_path += cPath;
+        download_path += temp_path;
+        //qDebug()<<"current path is : " << cPath;
+        if(oDirectory.exists(download_path)){
+            qDebug()<<"Directory" << download_path<< "already exists!!!!";
+            //delete xml file
+        }
+        else{
+            if (info.isFile())
             {
-                QString remoteFile = info.name();
-                {
-                    if (!filesOnRemote.contains(remoteFile))//if file not there in filesonremote list
+
+                    QString remoteFile = info.name();
                     {
-                        filesOnRemote.push_back(remoteFile);//equivalent to appending list
-                        std::cout << "Found file " << remoteFile.toStdString() << std::endl;
+//                        if (!filesOnRemote.contains(remoteFile))//if file not there in filesonremote list
+                        {
+                            //filesOnRemote.push_back(remoteFile);//equivalent to appending list
+                            std::cout << "Found file " << remoteFile.toStdString() << std::endl;
 
-                        qDebug()<<"Found file" << remoteFile << "on Remote; Added to remoteList;  emit RequestFileDownload";
-                        emit requestFileDownload(remoteFile);
+                            qDebug()<<"Found XML file" << remoteFile << "on Remote; Added to remoteList;  emit RequestFileDownload";
+                            //emit requestFileDownload(remoteFile);
+                            qDebug()<<"Find PDFs for job " << remoteFile;
+                            emit checkPDFList(remoteFile);
+
+
+                        }
+//                        else{
+//                            qDebug()<<"File already on RemoteList";
+//                        }
+
 
                     }
-                    else{
-                        qDebug()<<"File already on RemoteList";
-                    }
 
 
-                }
             }
+        }
+        temp_path.clear();
+        download_path.clear();
+        //qDebug()<<"Path cleared";
+    }
+    if(info.name().endsWith(".pdf",Qt::CaseInsensitive)){ // pdf folder
+
+        pdflistupdated = false;
+        QString remoteFile = info.name();
+        //qDebug()<<"Listing pdf files in PDF folder";
+       // qDebug()<<"PDF FileEntry(): "<<remoteFile<<"Last modified:" << info.lastModified().toString();
+        // Add pdf files to list
+
+        if (info.name().contains(jobID) && !pdffilesList.contains(remoteFile))//if file not there in filesonremote list
+        {
+            pdffilesList.push_back(remoteFile);//equivalent to appending list
+            std::cout << "Found PDF file " << remoteFile.toStdString() << std::endl;
+
+            qDebug()<<"Found PDF file" << remoteFile<< "on Remote; Added to pdfFilesList";
+            //emit requestPDFDownload();
+
+            // check pdf list, and
+            emit requestFileDownload(remoteFile);
 
         }
+        else{
+            if(pdffilesList.contains(remoteFile))
+                qDebug()<<"PDF File " << remoteFile << "already on pdffilelist" ;
+        }
+
+        pdflistupdated = true;
+        is_pdf_transferred = false;
     }
-    temp_path.clear();
-    download_path.clear();
-    qDebug()<<"Path cleared";
+
 
 
 
@@ -417,6 +484,7 @@ void FTPPusher::initFTP()
         QObject::connect(ftp,SIGNAL(stateChanged(int)),this,SLOT(stateChanged(int)));
         QObject::connect(ftp,SIGNAL(commandFinished(int,bool)),this,SLOT(readyRead(int,bool)));
         QObject::connect(ftp,SIGNAL(dataTransferProgress(qint64,qint64)),this,SLOT(transfer(qint64,qint64)));
+       // QObject::connect(ftp,SIGNAL(dataTransferProgress(qint64,qint64)),this,SLOT(transferPDF(qint64,qint64)));
         QObject::connect(ftp,SIGNAL(listInfo(QUrlInfo)),this,SLOT(fileEntry(QUrlInfo)));
         qDebug()<<"Finish initFTP()";
     //    fileMutex->unlock();
@@ -432,6 +500,25 @@ void FTPPusher::initFTP()
     QObject::connect(this,SIGNAL(sendPDF(QString,QString)),this,SLOT(pushPDF(QString,QString)));
     QObject::connect(this,SIGNAL(checkRemote()),this,SLOT(checkRemoteListing()));*/
 }
+
+void FTPPusher::checkPDFList(QString xmlname){
+    xmlname.remove(QChar('.'), Qt::CaseInsensitive);
+    xmlname.remove(QChar('x'), Qt::CaseInsensitive);
+    xmlname.remove(QChar('m'), Qt::CaseInsensitive);
+    xmlname.remove(QChar('l'), Qt::CaseInsensitive);
+    qDebug()<<"PDF Listing. Job Id : " << xmlname;
+
+    jobID = xmlname;
+    QString rp_pdfFolder = "../";
+    rp_pdfFolder.append(pdfFolder);
+    emit cd(rp_pdfFolder);
+//    if(ftp->list()==0){
+//        qDebug()<<"Folder empty!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
+//    }
+    ftp->list(rp_pdfFolder); //adds pdf files to pdffilelist
+}
+
+
 
 void FTPPusher::pushPJ(QString qsPj)
 {
