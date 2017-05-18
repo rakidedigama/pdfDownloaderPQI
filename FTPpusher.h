@@ -20,12 +20,16 @@ protected:
     int m_iConnectionState;
     bool m_bStopRequested;
     bool is_transferred;
+    bool is_pdf_transferred;
+    bool pdflistupdated;
+    bool firstxml;
 
 
 
     //QMutex* fileMutex;
     QStringList filesOnRemote;
     QStringList pendingDownloads;
+    QStringList pdffilesList;
     QString lastOkDownload;
     QString temp_path;
     QString download_path;
@@ -34,30 +38,44 @@ protected:
 
     QDir oDirectory;
     QFile* file;
+    QFile* pdfFile;
     QFtp *ftp;
     QString sHost;
     QString sUser;
     QString sPassWord;
     QString sFolder;
+    QString pdfFolder;
+    QString ftpCD;
     QString sPJFolder;
     QString sTestPJ;
+    QString jobID;
     unsigned uTimeout;
     int m_iLastGet;
     
 signals:
     void reconnect();
-    void cd();
+    void cd(QString);
     void pushPrintJob(QString);
     void requestFileList();
     void requestFileDownload(QString);
-
+    void PDFdirectory(QString);
+   // void requestPDFDownload(QString);
+    //void requestPDFlist(QString); // Find pdfs for xml file
     void handleIncomingXML(QString);
-    
+
+public slots:
+    void checkPDFList(QString);
+
 private slots:
+    //void downloadPDFs(QString);
+    void convertPDFs(QString);
     void stateChanged(int);
     void connect();
-    void cdToFolder();
+    void cdToFolder(QString);
     void pushPJ(QString);
+    //void transfer(int,bool );
+   // void transferPDF(qint64 done,qint64 total);
+
     void transfer(qint64 done, qint64 total );
     void fileEntry(QUrlInfo info);
     void checkRemoteListing();

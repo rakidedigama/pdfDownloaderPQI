@@ -1,4 +1,5 @@
 #include "ftppusher.h"
+#include "pdfconverter.h"
 
 
 #include <QDir>
@@ -17,7 +18,8 @@ FTPPusher::FTPPusher(QObject *parent) :
     m_bStopRequested = false;
     is_transferred = false;
     pdflistupdated = false;
-    is_pdf_transferred = true; //initialize
+    firstxml = true;
+    /*is_pdf_transferred = true;*/ //initialize
 
     //fileMutex = new QMutex();
 
@@ -33,7 +35,7 @@ FTPPusher::FTPPusher(QObject *parent) :
     uTimeout = ini.GetSetValue("FTP", "ConnectionTimeout",5000, "Connection timeout");
 
     ftp = 0;
-    cPath = oDirectory.currentPath();
+    cPath = "C:/PINTAWORKS/PQI/Work";
     qDebug() << "host is: " << sHost;
     qDebug() << "User is: " << sUser;
     qDebug() << "password is:" << sPassWord;
@@ -59,9 +61,8 @@ FTPPusher::FTPPusher(QObject *parent) :
    // QObject::connect(this,SIGNAL(pushPrintJob(QString)),this,SLOT(pushPJ(QString)));
 
     QObject::connect(this, SIGNAL(requestFileList()),this,SLOT(checkRemoteListing()));
-
     QObject::connect(this,SIGNAL(requestFileDownload(QString)),this,SLOT(getRemoteFile(QString)));
-
+    QObject::connect(this,SIGNAL(PDFdirectory(QString)),this,SLOT(convertPDFs(QString)));
     //QObject::connect(this,SIGNAL(requestPDFDownload(QString)),SLOT(downloadPDFs(QString)));
 
 
@@ -96,7 +97,7 @@ void FTPPusher::run()
         }
 
         qDebug()<<"Connection okay. Look for new XMLs";
-        qDebug()<<"size of pending xml Downloads: "<<pendingDownloads.size();
+        qDebug()<<"size of pending pdf Downloads: "<<pendingDownloads.size();
         if (pendingDownloads.size()> 0)
         {
             qDebug()<<"pendingDownloads size greater than 0";
@@ -159,16 +160,19 @@ void FTPPusher::run()
                             while(!is_transferred){
                                //qDebug()<<".";// wait for transfer to be finished
                             }
-                            temp_path.clear();
-                            download_path.clear();
-                            if(pendingDownloads.size()==0){// change directory back to work
 
-                                    qDebug()<<"Emit cd back to work";
-                                    QString tPath = "..";
-                                    tPath.append(sFolder);
-                                    emit cd(tPath);
+                            if(pendingDownloads.size()==0){// PDF Downloads finished.change directory back to work
+                                    firstxml = true;
+//                                    qDebug()<<"Emit cd back to work";
+//                                    QString tPath = "..";
+//                                    tPath.append(sFolder);
+                                    //emit cd(tPath);
+                                    emit PDFdirectory(download_path);
+                                    // Emit path to initialize pdf converter
 
                             }
+                            temp_path.clear();
+                            download_path.clear();
 
                         }
                     }
@@ -277,7 +281,7 @@ void FTPPusher::transfer(qint64 done, qint64 total)
             lastOkDownload = name;
             pendingDownloads.removeAll(name);//Removing file from list
             pdffilesList.removeAll(name);
-            ftp->remove(name);
+            //ftp->remove(name);
 
            // filesOnRemote.removeAll(name);
 
@@ -289,6 +293,22 @@ void FTPPusher::transfer(qint64 done, qint64 total)
         }
     }
 
+}
+
+void FTPPusher::convertPDFs(QString dirPath)
+{
+    qDebug()<<"Starting PDF converter";
+    PDFConverter pdf(dirPath);
+    pdf.start();
+    while(pdf.stopRequested()==false){
+        //do nothing while pdf converts
+    }
+    pdf.exit(0);
+
+    qDebug()<<"Emit cd back to work";
+    QString tPath = "..";
+    tPath.append(sFolder);
+    emit cd(tPath); // change folder back to xml
 }
 
 void FTPPusher::checkRemoteListing()
@@ -330,7 +350,7 @@ void FTPPusher::getRemoteFile(QString q)
     {
         //qDebug()<<"file ";
         if (!pendingDownloads.contains(q))//appending to pendingdownloads
-            qDebug()<<"getRemotefile()" << q <<" adding to pending downloads list"<<endl;
+            qDebug()<<"getRemotefile()" << q <<" added to pending downloads list"<<endl;
             pendingDownloads.push_back(q);
     }
     else
@@ -409,7 +429,7 @@ void FTPPusher::fileEntry(QUrlInfo info)
 
                     QString remoteFile = info.name();
                     {
-//                        if (!filesOnRemote.contains(remoteFile))//if file not there in filesonremote list
+                        if (firstxml==true)//if file not there in filesonremote list
                         {
                             //filesOnRemote.push_back(remoteFile);//equivalent to appending list
                             std::cout << "Found file " << remoteFile.toStdString() << std::endl;
@@ -417,13 +437,15 @@ void FTPPusher::fileEntry(QUrlInfo info)
                             qDebug()<<"Found XML file" << remoteFile << "on Remote; Added to remoteList;  emit RequestFileDownload";
                             //emit requestFileDownload(remoteFile);
                             qDebug()<<"Find PDFs for job " << remoteFile;
+                            firstxml = false;
                             emit checkPDFList(remoteFile);
 
 
+
                         }
-//                        else{
-//                            qDebug()<<"File already on RemoteList";
-//                        }
+                        else{
+                            qDebug()<<"Already found new xml file";
+                        }
 
 
                     }
@@ -461,7 +483,7 @@ void FTPPusher::fileEntry(QUrlInfo info)
         }
 
         pdflistupdated = true;
-        is_pdf_transferred = false;
+        //is_pdf_transferred = false;
     }
 
 
@@ -515,6 +537,7 @@ void FTPPusher::checkPDFList(QString xmlname){
 //    if(ftp->list()==0){
 //        qDebug()<<"Folder empty!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!";
 //    }
+    qDebug()<<"list pdf files:";
     ftp->list(rp_pdfFolder); //adds pdf files to pdffilelist
 }
 
