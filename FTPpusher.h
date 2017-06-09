@@ -23,6 +23,9 @@ protected:
     bool is_pdf_transferred;
     bool pdflistupdated;
     bool firstxml;
+    bool pdfFound;
+    bool newxml;
+    bool xmlFound;
 
 
 
@@ -58,17 +61,17 @@ signals:
     void pushPrintJob(QString);
     void requestFileList();
     void requestFileDownload(QString);
-    void PDFdirectory(QString);
+    void PDFconverter();
    // void requestPDFDownload(QString);
     //void requestPDFlist(QString); // Find pdfs for xml file
     void handleIncomingXML(QString);
 
 public slots:
-    void checkPDFList(QString);
+    void checkPDFList();
 
 private slots:
     //void downloadPDFs(QString);
-    void convertPDFs(QString);
+    void convertPDFs();
     void stateChanged(int);
     void connect();
     void cdToFolder(QString);
