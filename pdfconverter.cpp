@@ -49,14 +49,15 @@ void PDFConverter::run()
 
 
     QFileInfoList list;// = dir.entryInfoList(types,QDir::NoDotAndDotDot | QDir::Files);
-    cout << " Waiting for new PDFs "  << endl;
+    //cout << " Waiting for new PDFs "  << endl;
 
     while (!m_bStopRequested)
     {
 
         list.clear();
         list = dir.entryInfoList(types,QDir::NoDotAndDotDot | QDir::Files);
-        cout << "Number of pdf files: " << list.size()<< endl;
+        //cout << "Number of pdf files: " << list.size()<< endl;
+        qDebug()<< "PDF directory is :" << dir.path();
         if(list.size()<1){
             qDebug()<<"No pdf files. Exiting conversion";
             m_bStopRequested = true;
@@ -69,7 +70,7 @@ void PDFConverter::run()
             cout << "fileName :" << fileName.toStdString()<< endl;
 
             fileName = fileName.left(fileName.toStdString().find_last_of('.'));
-            cout << "New fileName: " << fileName.toStdString()<<endl;
+            //cout << "New fileName: " << fileName.toStdString()<<endl;
             if (stuff.contains(fileName)){
                 stuff[fileName] = 2;
             cout << "stuff contains" << fileName.toStdString()<<endl;
@@ -120,6 +121,7 @@ bool PDFConverter::createLvt(QString fileName, unsigned dpi)
         return false;
     }
 
+
     QString tiff = fileName.left(fileName.toStdString().find_last_of('.')) + ".tiff";
     cout << "tiff filename: " << tiff.toStdString()<<endl;
     QString pdf = fileName.left(fileName.toStdString().find_last_of('.')) + ".pdf";
@@ -167,6 +169,28 @@ bool PDFConverter::createLvt(QString fileName, unsigned dpi)
     TiffConverter::ConvertMultipageCMYKTiffToLVTImageCMYK(tiff.toStdString(),pwImg.toStdString(),dpi);
     QFile(tiff).remove();
     cout << "LVT Created. Deleting pdf: "<< pdf.toStdString();
+
+    QFile f(fileName);
+    QFileInfo fileInfo(f.fileName());
+    QString name(fileInfo.fileName());
+
+    QString pdfSaveFolder = hotFolder;
+    pdfSaveFolder += "/pdfarchive";
+    QDir dir(pdfSaveFolder);
+    if (!dir.exists())
+    {
+        if (!dir.mkdir(pdfSaveFolder))
+        {
+            cout << pdfSaveFolder.toStdString() << " did not exist and could not be created. Exiting" << endl;
+        }
+        else
+            cout << "Created " << pdfSaveFolder.toStdString() << endl;
+    }
+    QString pdfSrc = pdf;
+    qDebug()<< "pdfSource name" << pdfSrc;
+    QString pdfDst = pdfSaveFolder + '/' + name;
+    qDebug()<<" pdfDest name"<< pdfDst;
+    QFile::copy(pdfSrc, pdfDst);
     QFile(pdf).remove();
     return true;
 }
